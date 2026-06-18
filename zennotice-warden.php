@@ -4,8 +4,8 @@
  * Plugin URI: https://wordpress.org/plugins/zennotice-warden/
  * Description: Individually hide or block admin notices. AJAX-powered with regex auto-blocking.
  * Version: 1.8.0
- * Author: Sergey Kruglov
- * Author URI: https://kruglov.net
+ * Author: kruglovnet
+ * Author URI: https://profiles.wordpress.org/kruglovnet/
  * Text Domain: zennotice-warden
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
