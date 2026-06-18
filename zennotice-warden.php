@@ -54,33 +54,83 @@ class ZenNoticeWarden {
 
         $blocked_ids = $this->get_blocked_ids();
         $regex_filters = $this->get_regex_filters();
-        $pattern = '/<(div|section)[^>]*class="[^"]*(notice|updated|error|update-nag)[^"]*"[^>]*>.*?<\/\1>/is';
+        $output = '';
+        $offset = 0;
+        $pattern = '/<(div|section)([^>]*class\s*=\s*([\'"])[^\'"]*(notice|updated|error|update-nag)[^\'"]*\3[^>]*)>/i';
 
-        return preg_replace_callback($pattern, function($matches) use ($blocked_ids, $regex_filters) {
-            $notice_content = $matches[0];
-            $info = $this->get_notice_info($notice_content);
+        while (preg_match($pattern, $buffer, $matches, PREG_OFFSET_CAPTURE, $offset)) {
+            $match_start = $matches[0][1];
+            $tag = $matches[1][0];
 
-            if (in_array($info['id'], $blocked_ids, true)) {
-                return '';
-            }
+            $output .= substr($buffer, $offset, $match_start - $offset);
 
-            foreach ($regex_filters as $filter) {
-                if (@preg_match($filter['pattern'], $info['text'])) {
-                    return '';
+            $depth = 1;
+            $open_tag = '<' . $tag;
+            $close_tag = '</' . $tag . '>';
+            $search_start = $match_start + strlen($matches[0][0]);
+            $notice_end = $search_start;
+
+            while ($depth > 0 && $notice_end < strlen($buffer)) {
+                $next_open = strpos($buffer, $open_tag, $search_start);
+                $next_close = strpos($buffer, $close_tag, $search_start);
+
+                if ($next_close === false) {
+                    $notice_end = strlen($buffer);
+                    break;
+                }
+
+                if ($next_open !== false && $next_open < $next_close) {
+                    $depth++;
+                    $search_start = $next_open + strlen($open_tag);
+                } else {
+                    $depth--;
+                    $search_start = $next_close + strlen($close_tag);
+                    if ($depth === 0) {
+                        $notice_end = $next_close + strlen($close_tag);
+                    }
                 }
             }
 
-            $button_title = esc_attr__('Block this notice', 'zennotice-warden');
-            $button_text = mb_substr($info['text'], 0, 500);
-            $button = sprintf(
-                '<button class="zennotice-warden-toggle" data-id="%s" data-text="%s" title="%s" style="float:right; cursor:pointer; background:none; border:none; color:#cc0000; font-size:18px; line-height:1;">&times;</button>',
-                esc_attr($info['id']),
-                esc_attr($button_text),
-                $button_title
-            );
+            $notice_content = substr($buffer, $match_start, $notice_end - $match_start);
+            $info = $this->get_notice_info($notice_content);
 
-            return preg_replace('/(<\/div>|<\/section>)$/i', $button . '$1', $notice_content);
-        }, $buffer);
+            if (in_array($info['id'], $blocked_ids, true)) {
+                $output .= '';
+            } else {
+                $matched = false;
+                foreach ($regex_filters as $filter) {
+                    if (@preg_match($filter['pattern'], $info['text'])) {
+                        $matched = true;
+                        break;
+                    }
+                }
+
+                if ($matched) {
+                    $output .= '';
+                } else {
+                    $button_title = esc_attr__('Block this notice', 'zennotice-warden');
+                    $button_text = mb_substr($info['text'], 0, 500);
+                    $button = sprintf(
+                        '<button class="zennotice-warden-toggle" data-id="%s" data-text="%s" title="%s" style="float:right; cursor:pointer; background:none; border:none; color:#cc0000; font-size:18px; line-height:1; margin-left:10px;">&times;</button>',
+                        esc_attr($info['id']),
+                        esc_attr($button_text),
+                        $button_title
+                    );
+
+                    $close_tag_pos = strrpos($notice_content, $close_tag);
+                    if ($close_tag_pos !== false) {
+                        $notice_content = substr_replace($notice_content, $button . $close_tag, $close_tag_pos, strlen($close_tag));
+                    }
+
+                    $output .= $notice_content;
+                }
+            }
+
+            $offset = $notice_end;
+        }
+
+        $output .= substr($buffer, $offset);
+        return $output;
     }
 
     private function get_notice_info($content) {
