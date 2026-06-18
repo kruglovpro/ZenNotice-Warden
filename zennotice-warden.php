@@ -19,7 +19,9 @@ class ZenNoticeWarden {
 
     private $option_name = 'zennotice_warden_blocked_list';
     private $regex_option_name = 'zennotice_warden_regex_filters';
+    private $blocked_plugins_option = 'zennotice_warden_blocked_plugins';
     private $nonce_action = 'zennotice_warden_nonce';
+    private $plugin_names_cache = null;
 
     public function __construct() {
         if (!is_admin()) {
@@ -51,6 +53,7 @@ class ZenNoticeWarden {
 
     public function filter_notices($html) {
         $blocked_texts = array_map(function($n) { return $n['text']; }, $this->get_blocked_notices());
+        $blocked_plugins = $this->get_blocked_plugins();
         $regex_filters = $this->get_regex_filters();
         $patterns = array_map(function($f) { return $f['pattern']; }, $regex_filters);
 
@@ -65,7 +68,6 @@ class ZenNoticeWarden {
             $head_len = strlen($m[0][0]);
             $search = $start + $head_len;
 
-            // Find matching close tag via depth counting
             $depth = 1;
             $end = $search;
             while ($depth > 0 && $end < strlen($html)) {
@@ -81,9 +83,18 @@ class ZenNoticeWarden {
             $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($full, true)));
 
             $hide = false;
+
             foreach ($blocked_texts as $bt) {
                 if ($bt === $text) { $hide = true; break; }
             }
+
+            if (!$hide && !empty($blocked_plugins)) {
+                $source = $this->detect_notice_source($text);
+                if ($source && in_array($source, $blocked_plugins, true)) {
+                    $hide = true;
+                }
+            }
+
             if (!$hide) {
                 foreach ($patterns as $p) {
                     if (@preg_match($p, $text)) { $hide = true; break; }
@@ -91,7 +102,6 @@ class ZenNoticeWarden {
             }
 
             if ($hide) {
-                // Add style="display:none" to the opening tag
                 $insert = strpos($full, '>') + 1;
                 $output .= substr($full, 0, $insert - 1) . ' style="display:none"' . substr($full, $insert - 1);
             } else {
@@ -115,22 +125,50 @@ class ZenNoticeWarden {
 
         $blocked = $this->get_blocked_notices();
         $blocked_texts = array_map(function($n) { return $n['text']; }, $blocked);
+        $blocked_plugins = $this->get_blocked_plugins();
         $regex_filters = $this->get_regex_filters();
         $regex_patterns = array_map(function($f) { return $f['pattern']; }, $regex_filters);
 
         $inline_js = '
 (function() {
-    var BLOCKED = ' . json_encode($blocked_texts) . ';
+    var BLOCKED_TEXTS = ' . json_encode($blocked_texts) . ';
+    var BLOCKED_PLUGINS = ' . json_encode($blocked_plugins) . ';
     var REGEX = ' . json_encode($regex_patterns) . ';
     var NOTICE_SEL = ".notice, .updated, .error, .update-nag, .message";
+
+    var pluginNames = ' . json_encode($this->get_plugin_names_list()) . ';
 
     function getNoticeText(notice) {
         return notice.textContent.replace(/\s+/g, " ").trim();
     }
 
+    function detectSource(text) {
+        var best = "", bestLen = 0;
+        for (var i = 0; i < pluginNames.length; i++) {
+            var name = pluginNames[i];
+            if (!name) continue;
+            var idx = text.toLowerCase().indexOf(name.toLowerCase());
+            if (idx !== -1 && name.length > bestLen) {
+                best = name;
+                bestLen = name.length;
+            }
+        }
+        return best;
+    }
+
     function isBlocked(text) {
-        for (var i = 0; i < BLOCKED.length; i++) {
-            if (BLOCKED[i] === text) return true;
+        for (var i = 0; i < BLOCKED_TEXTS.length; i++) {
+            if (BLOCKED_TEXTS[i] === text) return true;
+        }
+        return false;
+    }
+
+    function isPluginBlocked(text) {
+        if (!BLOCKED_PLUGINS.length) return false;
+        var src = detectSource(text);
+        if (!src) return false;
+        for (var i = 0; i < BLOCKED_PLUGINS.length; i++) {
+            if (BLOCKED_PLUGINS[i] === src) return true;
         }
         return false;
     }
@@ -145,13 +183,14 @@ class ZenNoticeWarden {
         return false;
     }
 
-    function addButton(notice) {
+    function addButton(notice, source) {
         if (notice.querySelector(".znw-toggle")) return;
         var text = getNoticeText(notice);
         if (!text) return;
         var btn = document.createElement("button");
         btn.className = "znw-toggle";
         btn.setAttribute("data-text", text.substring(0, 500));
+        btn.setAttribute("data-source", source || "");
         btn.title = "' . esc_js(__('Block this notice', 'zennotice-warden')) . '";
         btn.innerHTML = "&times;";
         btn.style.cssText = "float:right;cursor:pointer;background:none;border:none;color:#cc0000;font-size:18px;line-height:1;margin-left:10px;padding:0;";
@@ -160,11 +199,11 @@ class ZenNoticeWarden {
 
     function processNotice(notice) {
         var text = getNoticeText(notice);
-        if (isBlocked(text) || matchesRegex(text)) {
+        if (isBlocked(text) || isPluginBlocked(text) || matchesRegex(text)) {
             notice.style.display = "none";
             return;
         }
-        addButton(notice);
+        addButton(notice, detectSource(text));
     }
 
     document.addEventListener("DOMContentLoaded", function() {
@@ -187,12 +226,19 @@ class ZenNoticeWarden {
         e.preventDefault();
         var btn = jQuery(this);
         var txt = btn.data("text") || "";
+        var src = btn.data("source") || "";
         var notice = btn.closest(NOTICE_SEL);
-        jQuery.post(ZenNoticeWardenData.ajax_url, {
+        var data = {
             action: ZenNoticeWardenData.action,
             notice_text: txt,
             security: ZenNoticeWardenData.nonce
-        }, function(response) {
+        };
+        if (src) {
+            if (confirm("' . esc_js(__('Also block all notices from this plugin?', 'zennotice-warden')) . '")) {
+                data.block_plugin = 1;
+            }
+        }
+        jQuery.post(ZenNoticeWardenData.ajax_url, data, function(response) {
             if (response.success) {
                 notice.fadeOut(function() {
                     notice.css("display", "none");
@@ -239,32 +285,50 @@ class ZenNoticeWarden {
         }
 
         if (!$found) {
+            $source = $this->detect_notice_source($text);
             $blocked[] = [
                 'text'   => mb_substr($text, 0, 500),
-                'source' => $this->detect_notice_source($text),
+                'source' => $source,
             ];
         }
 
         update_option($this->option_name, $blocked);
+
+        // If block_plugin flag is set, also block the plugin entirely
+        if (!empty($_POST['block_plugin']) && !empty($source)) {
+            $blocked_plugins = $this->get_blocked_plugins();
+            if (!in_array($source, $blocked_plugins, true)) {
+                $blocked_plugins[] = $source;
+                update_option($this->blocked_plugins_option, $blocked_plugins);
+            }
+        }
+
         wp_send_json_success();
     }
 
-    private function detect_notice_source($text) {
+    private function get_plugin_names_list() {
+        if ($this->plugin_names_cache !== null) {
+            return $this->plugin_names_cache;
+        }
         if (!function_exists('get_plugins')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
-        $all_plugins = get_plugins();
-        $best = '';
-        $best_len = 0;
-        foreach ($all_plugins as $data) {
+        $names = [];
+        foreach (get_plugins() as $data) {
             $name = trim($data['Name']);
-            if (!$name) continue;
-            if (mb_stripos($text, $name) !== false && mb_strlen($name) > $best_len) {
-                $best = $name;
-                $best_len = mb_strlen($name);
+            if ($name) $names[] = $name;
+        }
+        $this->plugin_names_cache = $names;
+        return $names;
+    }
+
+    private function detect_notice_source($text) {
+        foreach ($this->get_plugin_names_list() as $name) {
+            if (mb_stripos($text, $name) !== false) {
+                return $name;
             }
         }
-        return $best;
+        return '';
     }
 
     private function normalize_blocked($blocked) {
@@ -289,6 +353,11 @@ class ZenNoticeWarden {
     private function get_blocked_notices() {
         $raw = get_option($this->option_name, []);
         return $this->normalize_blocked($raw);
+    }
+
+    private function get_blocked_plugins() {
+        $plugins = get_option($this->blocked_plugins_option, []);
+        return is_array($plugins) ? $plugins : [];
     }
 
     private function get_regex_filters() {
@@ -348,6 +417,7 @@ class ZenNoticeWarden {
         }
 
         $blocked = $this->get_blocked_notices();
+        $blocked_plugins = $this->get_blocked_plugins();
         $regex_filters = $this->get_regex_filters();
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -366,6 +436,24 @@ class ZenNoticeWarden {
                     update_option($this->option_name, $blocked);
                     echo '<div class="notice notice-success"><p>' . esc_html__('Notice unblocked.', 'zennotice-warden') . '</p></div>';
                 }
+            }
+
+            if (isset($_POST['zennotice_warden_block_plugin'])) {
+                $plugin = sanitize_text_field(wp_unslash($_POST['zennotice_warden_block_plugin']));
+                if (!empty($plugin) && !in_array($plugin, $blocked_plugins, true)) {
+                    $blocked_plugins[] = $plugin;
+                    update_option($this->blocked_plugins_option, $blocked_plugins);
+                    echo '<div class="notice notice-success"><p>' . sprintf(esc_html__('All notices from "%s" will now be blocked.', 'zennotice-warden'), esc_html($plugin)) . '</p></div>';
+                }
+            }
+
+            if (isset($_POST['zennotice_warden_unblock_plugin'])) {
+                $plugin = sanitize_text_field(wp_unslash($_POST['zennotice_warden_unblock_plugin']));
+                $blocked_plugins = array_values(array_filter($blocked_plugins, function($p) use ($plugin) {
+                    return $p !== $plugin;
+                }));
+                update_option($this->blocked_plugins_option, $blocked_plugins);
+                echo '<div class="notice notice-success"><p>' . sprintf(esc_html__('Plugin "%s" unblocked.', 'zennotice-warden'), esc_html($plugin)) . '</p></div>';
             }
 
             if (isset($_POST['zennotice_warden_add_regex'])) {
@@ -399,6 +487,35 @@ class ZenNoticeWarden {
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__('ZenNotice Warden', 'zennotice-warden'); ?></h1>
+
+            <h2><?php echo esc_html__('Blocked Plugins', 'zennotice-warden'); ?></h2>
+            <p><?php echo esc_html__('All notices from these plugins will be automatically hidden, even if the text changes.', 'zennotice-warden'); ?></p>
+
+            <?php if (empty($blocked_plugins)) : ?>
+                <p><em><?php echo esc_html__('No blocked plugins. Click × on a notice, then use "Block plugin" in the list below.', 'zennotice-warden'); ?></em></p>
+            <?php else : ?>
+                <table class="wp-list-table widefat fixed striped" style="margin-bottom:25px;">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php echo esc_html__('Plugin Name', 'zennotice-warden'); ?></th>
+                            <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($blocked_plugins as $plugin) : ?>
+                            <tr>
+                                <td><strong><?php echo esc_html($plugin); ?></strong></td>
+                                <td>
+                                    <form method="post" style="display:inline;">
+                                        <?php wp_nonce_field('zennotice_warden_settings'); ?>
+                                        <button type="submit" name="zennotice_warden_unblock_plugin" value="<?php echo esc_attr($plugin); ?>" class="button button-small button-link-delete"><?php echo esc_html__('Unblock', 'zennotice-warden'); ?></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
 
             <h2><?php echo esc_html__('Regex Filters', 'zennotice-warden'); ?></h2>
             <p><?php echo esc_html__('Notices matching these regular expressions will be automatically hidden, even if they appear dynamically.', 'zennotice-warden'); ?></p>
@@ -463,13 +580,21 @@ class ZenNoticeWarden {
                                     <strong><?php echo esc_html($notice['source'] ?: __('Unknown', 'zennotice-warden')); ?></strong>
                                     <br><small style="color:#666;" title="<?php echo esc_attr($notice['text']); ?>"><?php echo esc_html(mb_substr($notice['text'], 0, 120)) . (mb_strlen($notice['text']) > 120 ? '...' : ''); ?></small>
                                 </td>
-                                <td>
+                                <td style="white-space:nowrap;">
                                     <form method="post" style="display:inline;">
                                         <?php wp_nonce_field('zennotice_warden_settings'); ?>
                                         <button type="submit" name="zennotice_warden_unblock" value="<?php echo $i; ?>" class="button button-small">
                                             <?php echo esc_html__('Unblock', 'zennotice-warden'); ?>
                                         </button>
                                     </form>
+                                    <?php if (!empty($notice['source'])) : ?>
+                                        <form method="post" style="display:inline;margin-left:4px;">
+                                            <?php wp_nonce_field('zennotice_warden_settings'); ?>
+                                            <button type="submit" name="zennotice_warden_block_plugin" value="<?php echo esc_attr($notice['source']); ?>" class="button button-small" onclick="return confirm('<?php echo esc_js(sprintf(__('Block all notices from %s?', 'zennotice-warden'), $notice['source'])); ?>')">
+                                                <?php echo esc_html__('Block plugin', 'zennotice-warden'); ?>
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -483,6 +608,7 @@ class ZenNoticeWarden {
     public function deactivate() {
         delete_option($this->option_name);
         delete_option($this->regex_option_name);
+        delete_option($this->blocked_plugins_option);
     }
 }
 
