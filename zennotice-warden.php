@@ -28,9 +28,81 @@ class ZenNoticeWarden {
 
         add_action('init', [$this, 'load_textdomain']);
         add_action('wp_ajax_zennotice_warden_toggle', [$this, 'toggle_notice']);
+        add_action('admin_notices', [$this, 'start_buffer'], -9999);
+        add_action('admin_notices', [$this, 'flush_buffer'], 9999);
+        add_action('network_admin_notices', [$this, 'start_buffer'], -9999);
+        add_action('network_admin_notices', [$this, 'flush_buffer'], 9999);
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
+    }
+
+    public function start_buffer() {
+        ob_start();
+    }
+
+    public function flush_buffer() {
+        $html = ob_get_clean();
+        if ($html === false || $html === '') {
+            return;
+        }
+        echo $this->filter_notices($html);
+    }
+
+    public function filter_notices($html) {
+        $blocked_texts = array_map(function($n) { return $n['text']; }, $this->get_blocked_notices());
+        $regex_filters = $this->get_regex_filters();
+        $patterns = array_map(function($f) { return $f['pattern']; }, $regex_filters);
+
+        $output = '';
+        $offset = 0;
+        $regex = '/<(div|section)([^>]*class\s*=\s*([\'"])[^\'"]*(notice|updated|error|update-nag)[^\'"]*\3[^>]*)>/i';
+
+        while (preg_match($regex, $html, $m, PREG_OFFSET_CAPTURE, $offset)) {
+            $start = $m[0][1];
+            $tag = $m[1][0];
+            $close_tag = '</' . $tag . '>';
+            $head_len = strlen($m[0][0]);
+            $search = $start + $head_len;
+
+            // Find matching close tag via depth counting
+            $depth = 1;
+            $end = $search;
+            while ($depth > 0 && $end < strlen($html)) {
+                $no = strpos($html, '<' . $tag, $end);
+                $nc = strpos($html, $close_tag, $end);
+                if ($nc === false) { $end = strlen($html); break; }
+                if ($no !== false && $no < $nc) { $depth++; $end = $no + strlen($tag) + 1; }
+                else { $depth--; $end = $nc + strlen($close_tag); }
+            }
+
+            $output .= substr($html, $offset, $start - $offset);
+            $full = substr($html, $start, $end - $start);
+            $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($full, true)));
+
+            $hide = false;
+            foreach ($blocked_texts as $bt) {
+                if ($bt === $text) { $hide = true; break; }
+            }
+            if (!$hide) {
+                foreach ($patterns as $p) {
+                    if (@preg_match($p, $text)) { $hide = true; break; }
+                }
+            }
+
+            if ($hide) {
+                // Add style="display:none" to the opening tag
+                $insert = strpos($full, '>') + 1;
+                $output .= substr($full, 0, $insert - 1) . ' style="display:none"' . substr($full, $insert - 1);
+            } else {
+                $output .= $full;
+            }
+
+            $offset = $end;
+        }
+
+        $output .= substr($html, $offset);
+        return $output;
     }
 
     public function load_textdomain() {
