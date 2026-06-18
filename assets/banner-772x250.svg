@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 772 250">
+  <rect width="772" height="250" fill="#1d2327"/>
+  <polygon points="290,180 400,105 510,180" fill="#cc0000" opacity="0.8"/>
+  <text x="400" y="80" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="#fff">ZenNotice Warden</text>
+  <text x="400" y="110" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#bbb">Control WordPress admin notices</text>
+</svg>

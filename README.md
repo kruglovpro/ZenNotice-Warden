@@ -55,6 +55,7 @@ Manage blocked notices on the **Settings → ZenNotice Warden** page.
 
 - WordPress 4.0+
 - PHP 5.6+
+- Tested up to WordPress 7.0
 
 ## License
 
