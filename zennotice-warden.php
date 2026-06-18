@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZenNotice Warden
  * Plugin URI: https://wordpress.org/plugins/zennotice-warden/
- * Description: Individually hide or block admin notices. AJAX-powered with regex auto-blocking.
+ * Description: Hide annoying WordPress admin notices. Block, disable, or auto-hide plugin and system notices. AJAX-powered with regex filters.
  * Version: 1.8.0
  * Author: kruglovnet
  * Author URI: https://profiles.wordpress.org/kruglovnet/

@@ -1,10 +1,12 @@
 # ZenNotice Warden
 
-ZenNotice Warden is a WordPress plugin that allows you to individually hide or block admin notices in the WordPress admin panel.
+Hide annoying WordPress admin notices. Block, disable, or auto-hide plugin and system notices with one click or regex filters.
 
 ## Description
 
-The plugin analyzes the output of `admin_notices` and `network_admin_notices` hooks and adds a block button to each notice. Once clicked, the notice disappears and won't be shown again for the current site.
+**ZenNotice Warden puts you in control of your WordPress dashboard.** Tired of endless plugin notices, update reminders, and system messages cluttering your admin area? This plugin lets you hide any notice with one click — or set up automatic rules to block them forever.
+
+The plugin intercepts all output from `admin_notices` and `network_admin_notices` hooks and adds a block button to each notice. Once clicked, the notice disappears and won't be shown again for the current site.
 
 ## Features
 
