@@ -3,7 +3,7 @@
  * Plugin Name: ZenNotice Warden
  * Plugin URI: https://wordpress.org/plugins/zennotice-warden/
  * Description: Hide annoying WordPress admin notices. Block, disable, or auto-hide plugin and system notices. AJAX-powered with regex filters.
- * Version: 1.8.0
+ * Version: 1.8.1
  * Author: kruglovnet
  * Author URI: https://profiles.wordpress.org/kruglovnet/
  * Text Domain: zennotice-warden
@@ -122,6 +122,43 @@ class ZenNoticeWarden {
         return get_option($this->regex_option_name, []);
     }
 
+    private function validate_regex_pattern($pattern) {
+        if (empty($pattern)) {
+            return [false, __('Pattern cannot be empty.', 'zennotice-warden')];
+        }
+
+        if (strlen($pattern) > 200) {
+            return [false, __('Pattern is too long (max 200 characters).', 'zennotice-warden')];
+        }
+
+        $nested = '/
+            \(                    # opening paren
+            (?:                   # start group
+                [^()]*            # any non-paren chars
+                \(                # look for another opening paren
+            )
+        /x';
+        if (preg_match($nested, $pattern)) {
+            return [false, __('Nested groups in patterns may cause performance issues. Please simplify.', 'zennotice-warden')];
+        }
+
+        $test_result = @preg_match($pattern, '');
+        if ($test_result === false) {
+            $error = error_get_last();
+            $msg = $error ? preg_replace('/^preg_match\(\):\s*/i', '', $error['message']) : __('Invalid regex pattern.', 'zennotice-warden');
+            return [false, $msg];
+        }
+
+        $start = microtime(true);
+        @preg_match($pattern, str_repeat('a', 25));
+        $elapsed = microtime(true) - $start;
+        if ($elapsed > 0.05) {
+            return [false, __('Pattern is too slow. Please simplify it.', 'zennotice-warden')];
+        }
+
+        return [true, ''];
+    }
+
     public function toggle_notice() {
         if (!current_user_can('manage_options')) {
             wp_send_json_error(null, 403);
@@ -154,7 +191,7 @@ class ZenNoticeWarden {
     }
 
     public function enqueue_assets() {
-        wp_register_script('zennotice-warden', '', ['jquery'], '1.8.0', true);
+        wp_register_script('zennotice-warden', '', ['jquery'], '1.8.1', true);
         wp_enqueue_script('zennotice-warden');
 
         wp_add_inline_script('zennotice-warden', '
@@ -224,12 +261,17 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
                 $pattern = sanitize_text_field(wp_unslash($_POST['zennotice_warden_regex_pattern']));
                 $description = sanitize_text_field(wp_unslash($_POST['zennotice_warden_regex_desc']));
                 if (!empty($pattern)) {
-                    $regex_filters[] = [
-                        'pattern' => $pattern,
-                        'description' => $description,
-                    ];
-                    update_option($this->regex_option_name, $regex_filters);
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Regex filter added.', 'zennotice-warden') . '</p></div>';
+                    list($valid, $error) = $this->validate_regex_pattern($pattern);
+                    if ($valid) {
+                        $regex_filters[] = [
+                            'pattern' => $pattern,
+                            'description' => $description,
+                        ];
+                        update_option($this->regex_option_name, $regex_filters);
+                        echo '<div class="notice notice-success"><p>' . esc_html__('Regex filter added.', 'zennotice-warden') . '</p></div>';
+                    } else {
+                        echo '<div class="notice notice-error"><p>' . esc_html($error) . '</p></div>';
+                    }
                 }
             }
 

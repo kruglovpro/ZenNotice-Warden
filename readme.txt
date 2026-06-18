@@ -4,7 +4,7 @@ Tags: admin notices, hide notices, block notices, admin cleanup, notice manager
 Requires at least: 4.0
 Tested up to: 7.0
 Requires PHP: 5.6
-Stable tag: 1.8.0
+Stable tag: 1.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -83,6 +83,11 @@ Yes. It hooks into both `admin_notices` and `network_admin_notices`.
 
 == Changelog ==
 
+= 1.8.1 =
+* Added regex validation — unsafe or slow patterns are rejected with an error message
+* Prevent nested group ReDoS patterns
+* Added execution time check for regex filters
+
 = 1.8.0 =
 * Added regex auto-blocking — notices matching custom patterns are hidden automatically
 * Added notice content preview in the settings page
@@ -104,6 +109,9 @@ Yes. It hooks into both `admin_notices` and `network_admin_notices`.
 * Initial release
 
 == Upgrade Notice ==
+
+= 1.8.1 =
+Adds regex validation to reject unsafe or slow patterns.
 
 = 1.8.0 =
 Adds regex auto-blocking and notice content preview. Existing blocked notices are migrated automatically.

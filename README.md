@@ -33,6 +33,11 @@ Manage blocked notices on the **Settings → ZenNotice Warden** page.
 
 ## Changelog
 
+### 1.8.1
+- Added regex validation — unsafe or slow patterns are rejected with an error message
+- Prevented nested group ReDoS patterns
+- Added execution time check for regex filters
+
 ### 1.8.0
 - Added regex auto-blocking — notices matching custom patterns are hidden automatically
 - Added notice content preview in the settings page
