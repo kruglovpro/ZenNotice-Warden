@@ -1,0 +1,105 @@
+# Copyright (C) 2026 Sergey Kruglov
+# This file is distributed under the GPLv2 or later.
+# Translators: Sergey Kruglov <kruglov@outlook.com>
+msgid ""
+msgstr ""
+"Project-Id-Version: ZenNotice Warden 1.8.0\n"
+"Report-Msgid-Bugs-To: https://kruglov.net\n"
+"POT-Creation-Date: 2026-06-18 22:00+0300\n"
+"PO-Revision-Date: 2026-06-18 22:00+0300\n"
+"Last-Translator: Sergey Kruglov <kruglov@outlook.com>\n"
+"Language-Team: Russian\n"
+"Language: ru_RU\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Generator: Poedit 3.0\n"
+
+#: zennotice-warden.php
+msgid "Block this notice"
+msgstr "Скрыть уведомление"
+
+#: zennotice-warden.php
+msgid "ZenNotice Warden"
+msgstr "ZenNotice Warden"
+
+#: zennotice-warden.php
+msgid "All notices unblocked."
+msgstr "Все уведомления разблокированы."
+
+#: zennotice-warden.php
+msgid "Notice unblocked."
+msgstr "Уведомление разблокировано."
+
+#: zennotice-warden.php
+msgid "Regex Filters"
+msgstr "Регулярные фильтры"
+
+#: zennotice-warden.php
+msgid "Notices matching these regular expressions will be automatically blocked."
+msgstr "Уведомления, соответствующие этим регулярным выражениям, будут автоматически скрыты."
+
+#: zennotice-warden.php
+msgid "Pattern (e.g. /update available/i)"
+msgstr "Шаблон (напр. /update available/i)"
+
+#: zennotice-warden.php
+msgid "Description (optional)"
+msgstr "Описание (необязательно)"
+
+#: zennotice-warden.php
+msgid "Add Filter"
+msgstr "Добавить фильтр"
+
+#: zennotice-warden.php
+msgid "Pattern"
+msgstr "Шаблон"
+
+#: zennotice-warden.php
+msgid "Description"
+msgstr "Описание"
+
+#: zennotice-warden.php
+msgid "Actions"
+msgstr "Действия"
+
+#: zennotice-warden.php
+msgid "Delete"
+msgstr "Удалить"
+
+#: zennotice-warden.php
+msgid "Blocked Notices"
+msgstr "Заблокированные уведомления"
+
+#: zennotice-warden.php
+msgid "List of manually blocked admin notices."
+msgstr "Список уведомлений, заблокированных вручную."
+
+#: zennotice-warden.php
+msgid "No blocked notices."
+msgstr "Нет заблокированных уведомлений."
+
+#: zennotice-warden.php
+msgid "Unblock All"
+msgstr "Разблокировать все"
+
+#: zennotice-warden.php
+msgid "Unblock all notices?"
+msgstr "Разблокировать все уведомления?"
+
+#: zennotice-warden.php
+msgid "Notice ID"
+msgstr "ID уведомления"
+
+#: zennotice-warden.php
+msgid "Content"
+msgstr "Содержимое"
+
+#: zennotice-warden.php
+msgid "Unblock"
+msgstr "Разблокировать"
+
+#: zennotice-warden.php
+msgid "List of currently blocked admin notices."
+msgstr "Список заблокированных уведомлений."
