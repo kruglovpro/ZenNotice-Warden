@@ -10,7 +10,8 @@ The plugin analyzes the output of `admin_notices` and `network_admin_notices` ho
 
 - Block individual admin notices
 - Supports `notice`, `updated`, `error`, and `update-nag` notice types
-- Stores blocked notices in a WordPress option
+- Regex-based auto-blocking — notices matching a pattern are hidden automatically
+- Stores blocked notices with content preview in a WordPress option
 - Unblock notices via the settings page (Settings → ZenNotice Warden)
 - AJAX-based blocking with `manage_options` capability check
 - Automatic option cleanup on deactivation
@@ -29,6 +30,13 @@ After activation, a block button appears on each admin notice. Click it to hide 
 Manage blocked notices on the **Settings → ZenNotice Warden** page.
 
 ## Changelog
+
+### 1.8.0
+- Added regex auto-blocking — notices matching custom patterns are hidden automatically
+- Added notice content preview in the settings page
+- Added regex filter management UI (add/delete patterns)
+- Changed data format to store notice text alongside the ID
+- Added automatic migration from old data format
 
 ### 1.7.0
 - Improved notice ID generation (`wp_strip_all_tags` + whitespace normalization)

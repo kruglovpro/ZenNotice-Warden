@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZenNotice Warden
  * Description: Individually hide or block admin notices. AJAX-powered with settings page.
- * Version: 1.7.0
+ * Version: 1.8.0
  * Author: Sergey Kruglov
  * Author URI: https://kruglov.net
  * Text Domain: zennotice-warden
@@ -17,6 +17,7 @@ if (!defined('ABSPATH')) {
 class ZenNoticeWarden {
 
     private $option_name = 'zennotice_warden_blocked_list';
+    private $regex_option_name = 'zennotice_warden_regex_filters';
     private $nonce_action = 'zennotice_warden_nonce';
 
     public function __construct() {
@@ -50,21 +51,30 @@ class ZenNoticeWarden {
             return $buffer;
         }
 
-        $blocked_notices = get_option($this->option_name, []);
+        $blocked_ids = $this->get_blocked_ids();
+        $regex_filters = $this->get_regex_filters();
         $pattern = '/<(div|section)[^>]*class="[^"]*(notice|updated|error|update-nag)[^"]*"[^>]*>.*?<\/\1>/is';
 
-        return preg_replace_callback($pattern, function($matches) use ($blocked_notices) {
+        return preg_replace_callback($pattern, function($matches) use ($blocked_ids, $regex_filters) {
             $notice_content = $matches[0];
-            $notice_id = $this->get_notice_id($notice_content);
+            $info = $this->get_notice_info($notice_content);
 
-            if (in_array($notice_id, $blocked_notices, true)) {
+            if (in_array($info['id'], $blocked_ids, true)) {
                 return '';
             }
 
+            foreach ($regex_filters as $filter) {
+                if (@preg_match($filter['pattern'], $info['text'])) {
+                    return '';
+                }
+            }
+
             $button_title = esc_attr__('Block this notice', 'zennotice-warden');
+            $button_text = mb_substr($info['text'], 0, 500);
             $button = sprintf(
-                '<button class="zennotice-warden-toggle" data-id="%s" title="%s" style="float:right; cursor:pointer; background:none; border:none; color:#cc0000; font-size:18px; line-height:1;">&times;</button>',
-                esc_attr($notice_id),
+                '<button class="zennotice-warden-toggle" data-id="%s" data-text="%s" title="%s" style="float:right; cursor:pointer; background:none; border:none; color:#cc0000; font-size:18px; line-height:1;">&times;</button>',
+                esc_attr($info['id']),
+                esc_attr($button_text),
                 $button_title
             );
 
@@ -72,10 +82,43 @@ class ZenNoticeWarden {
         }, $buffer);
     }
 
-    private function get_notice_id($content) {
+    private function get_notice_info($content) {
         $text = wp_strip_all_tags($content, true);
         $text = trim(preg_replace('/\s+/', ' ', $text));
-        return md5($text);
+        return [
+            'id' => md5($text),
+            'text' => $text,
+        ];
+    }
+
+    private function normalize_blocked($blocked) {
+        if (empty($blocked) || !is_array($blocked)) {
+            return [];
+        }
+
+        if (isset($blocked[0]) && is_string($blocked[0])) {
+            return array_map(function($id) {
+                return ['id' => $id, 'text' => ''];
+            }, $blocked);
+        }
+
+        return $blocked;
+    }
+
+    private function get_blocked_notices() {
+        $raw = get_option($this->option_name, []);
+        return $this->normalize_blocked($raw);
+    }
+
+    private function get_blocked_ids() {
+        $notices = $this->get_blocked_notices();
+        return array_map(function($n) {
+            return $n['id'];
+        }, $notices);
+    }
+
+    private function get_regex_filters() {
+        return get_option($this->regex_option_name, []);
     }
 
     public function toggle_notice() {
@@ -90,12 +133,19 @@ class ZenNoticeWarden {
         }
 
         $id = sanitize_text_field(wp_unslash($_POST['notice_id']));
-        $blocked = get_option($this->option_name, []);
+        $text = isset($_POST['notice_text']) ? sanitize_text_field(wp_unslash($_POST['notice_text'])) : '';
+        $blocked = $this->get_blocked_notices();
+        $ids = array_map(function($n) { return $n['id']; }, $blocked);
 
-        if (in_array($id, $blocked, true)) {
-            $blocked = array_values(array_diff($blocked, [$id]));
+        if (in_array($id, $ids, true)) {
+            $blocked = array_values(array_filter($blocked, function($n) use ($id) {
+                return $n['id'] !== $id;
+            }));
         } else {
-            $blocked[] = $id;
+            $blocked[] = [
+                'id' => $id,
+                'text' => mb_substr($text, 0, 500),
+            ];
         }
 
         update_option($this->option_name, $blocked);
@@ -103,7 +153,7 @@ class ZenNoticeWarden {
     }
 
     public function enqueue_assets() {
-        wp_register_script('zennotice-warden', '', ['jquery'], '1.7.0', true);
+        wp_register_script('zennotice-warden', '', ['jquery'], '1.8.0', true);
         wp_enqueue_script('zennotice-warden');
 
         wp_add_inline_script('zennotice-warden', '
@@ -111,10 +161,12 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
     e.preventDefault();
     var btn = jQuery(this);
     var id = btn.data("id");
+    var txt = btn.data("text") || "";
     var notice = btn.closest(".notice, .updated, .error, .update-nag");
     jQuery.post(ZenNoticeWardenData.ajax_url, {
         action: ZenNoticeWardenData.action,
         notice_id: id,
+        notice_text: txt,
         security: ZenNoticeWardenData.nonce
     }, function(response) {
         if (response.success) {
@@ -146,27 +198,92 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
             return;
         }
 
-        $blocked = get_option($this->option_name, []);
+        $blocked = $this->get_blocked_notices();
+        $regex_filters = $this->get_regex_filters();
 
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['zennotice_warden_unblock_all'])) {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             check_admin_referer('zennotice_warden_settings');
-            update_option($this->option_name, []);
-            $blocked = [];
-            echo '<div class="notice notice-success"><p>' . esc_html__('All notices unblocked.', 'zennotice-warden') . '</p></div>';
-        }
 
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['zennotice_warden_unblock'])) {
-            check_admin_referer('zennotice_warden_settings');
-            $id = sanitize_text_field(wp_unslash($_POST['zennotice_warden_unblock']));
-            $blocked = array_values(array_diff($blocked, [$id]));
-            update_option($this->option_name, $blocked);
-            echo '<div class="notice notice-success"><p>' . esc_html__('Notice unblocked.', 'zennotice-warden') . '</p></div>';
+            if (isset($_POST['zennotice_warden_unblock_all'])) {
+                update_option($this->option_name, []);
+                $blocked = [];
+                echo '<div class="notice notice-success"><p>' . esc_html__('All notices unblocked.', 'zennotice-warden') . '</p></div>';
+            }
+
+            if (isset($_POST['zennotice_warden_unblock'])) {
+                $id = sanitize_text_field(wp_unslash($_POST['zennotice_warden_unblock']));
+                $blocked = array_values(array_filter($blocked, function($n) use ($id) {
+                    return $n['id'] !== $id;
+                }));
+                update_option($this->option_name, $blocked);
+                echo '<div class="notice notice-success"><p>' . esc_html__('Notice unblocked.', 'zennotice-warden') . '</p></div>';
+            }
+
+            if (isset($_POST['zennotice_warden_add_regex'])) {
+                $pattern = sanitize_text_field(wp_unslash($_POST['zennotice_warden_regex_pattern']));
+                $description = sanitize_text_field(wp_unslash($_POST['zennotice_warden_regex_desc']));
+                if (!empty($pattern)) {
+                    $regex_filters[] = [
+                        'pattern' => $pattern,
+                        'description' => $description,
+                    ];
+                    update_option($this->regex_option_name, $regex_filters);
+                    echo '<div class="notice notice-success"><p>' . esc_html__('Regex filter added.', 'zennotice-warden') . '</p></div>';
+                }
+            }
+
+            if (isset($_POST['zennotice_warden_delete_regex'])) {
+                $index = intval($_POST['zennotice_warden_delete_regex']);
+                if (isset($regex_filters[$index])) {
+                    array_splice($regex_filters, $index, 1);
+                    update_option($this->regex_option_name, $regex_filters);
+                    echo '<div class="notice notice-success"><p>' . esc_html__('Regex filter removed.', 'zennotice-warden') . '</p></div>';
+                }
+            }
         }
 
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__('ZenNotice Warden', 'zennotice-warden'); ?></h1>
-            <p><?php echo esc_html__('List of currently blocked admin notices.', 'zennotice-warden'); ?></p>
+
+            <h2><?php echo esc_html__('Regex Filters', 'zennotice-warden'); ?></h2>
+            <p><?php echo esc_html__('Notices matching these regular expressions will be automatically blocked.', 'zennotice-warden'); ?></p>
+
+            <form method="post" style="margin-bottom: 15px;">
+                <?php wp_nonce_field('zennotice_warden_settings'); ?>
+                <input type="text" name="zennotice_warden_regex_pattern" placeholder="<?php esc_attr_e('Pattern (e.g. /update available/i)', 'zennotice-warden'); ?>" style="width:300px;" required>
+                <input type="text" name="zennotice_warden_regex_desc" placeholder="<?php esc_attr_e('Description (optional)', 'zennotice-warden'); ?>" style="width:200px;">
+                <button type="submit" name="zennotice_warden_add_regex" value="1" class="button button-primary"><?php echo esc_html__('Add Filter', 'zennotice-warden'); ?></button>
+            </form>
+
+            <?php if (!empty($regex_filters)) : ?>
+                <table class="wp-list-table widefat fixed striped" style="margin-bottom:25px;">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php echo esc_html__('Pattern', 'zennotice-warden'); ?></th>
+                            <th scope="col"><?php echo esc_html__('Description', 'zennotice-warden'); ?></th>
+                            <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($regex_filters as $i => $filter) : ?>
+                            <tr>
+                                <td><code><?php echo esc_html($filter['pattern']); ?></code></td>
+                                <td><?php echo esc_html($filter['description']); ?></td>
+                                <td>
+                                    <form method="post" style="display:inline;">
+                                        <?php wp_nonce_field('zennotice_warden_settings'); ?>
+                                        <button type="submit" name="zennotice_warden_delete_regex" value="<?php echo $i; ?>" class="button button-small button-link-delete"><?php echo esc_html__('Delete', 'zennotice-warden'); ?></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
+            <h2><?php echo esc_html__('Blocked Notices', 'zennotice-warden'); ?></h2>
+            <p><?php echo esc_html__('List of manually blocked admin notices.', 'zennotice-warden'); ?></p>
 
             <?php if (empty($blocked)) : ?>
                 <p><em><?php echo esc_html__('No blocked notices.', 'zennotice-warden'); ?></em></p>
@@ -181,18 +298,20 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
                 <table class="wp-list-table widefat fixed striped">
                     <thead>
                         <tr>
-                            <th scope="col"><?php echo esc_html__('Notice ID', 'zennotice-warden'); ?></th>
-                            <th scope="col" width="120"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
+                            <th scope="col" width="280"><?php echo esc_html__('Notice ID', 'zennotice-warden'); ?></th>
+                            <th scope="col"><?php echo esc_html__('Content', 'zennotice-warden'); ?></th>
+                            <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($blocked as $id) : ?>
+                        <?php foreach ($blocked as $notice) : ?>
                             <tr>
-                                <td><code><?php echo esc_html($id); ?></code></td>
+                                <td><code><?php echo esc_html($notice['id']); ?></code></td>
+                                <td><?php echo esc_html($notice['text']); ?></td>
                                 <td>
                                     <form method="post" style="display:inline;">
                                         <?php wp_nonce_field('zennotice_warden_settings'); ?>
-                                        <button type="submit" name="zennotice_warden_unblock" value="<?php echo esc_attr($id); ?>" class="button button-small">
+                                        <button type="submit" name="zennotice_warden_unblock" value="<?php echo esc_attr($notice['id']); ?>" class="button button-small">
                                             <?php echo esc_html__('Unblock', 'zennotice-warden'); ?>
                                         </button>
                                     </form>
@@ -208,6 +327,7 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
 
     public function deactivate() {
         delete_option($this->option_name);
+        delete_option($this->regex_option_name);
     }
 }
 
