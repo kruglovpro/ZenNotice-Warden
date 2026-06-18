@@ -222,16 +222,19 @@ class ZenNoticeWarden {
 
         $id = sanitize_text_field(wp_unslash($_POST['notice_id']));
         $text = isset($_POST['notice_text']) ? sanitize_text_field(wp_unslash($_POST['notice_text'])) : '';
+        // Always use PHP-side md5 as canonical ID
+        $canonical_id = md5(trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($text, true))));
+
         $blocked = $this->get_blocked_notices();
         $ids = array_map(function($n) { return $n['id']; }, $blocked);
 
-        if (in_array($id, $ids, true)) {
-            $blocked = array_values(array_filter($blocked, function($n) use ($id) {
-                return $n['id'] !== $id;
+        if (in_array($canonical_id, $ids, true)) {
+            $blocked = array_values(array_filter($blocked, function($n) use ($canonical_id) {
+                return $n['id'] !== $canonical_id;
             }));
         } else {
             $blocked[] = [
-                'id' => $id,
+                'id' => $canonical_id,
                 'text' => mb_substr($text, 0, 500),
             ];
         }
@@ -244,13 +247,54 @@ class ZenNoticeWarden {
         wp_register_script('zennotice-warden', '', ['jquery'], '1.8.1', true);
         wp_enqueue_script('zennotice-warden');
 
-        wp_add_inline_script('zennotice-warden', '
+        // Simple string hash matching PHP's md5 style (first 8 hex chars)
+        $inline_js = '
+function znw_hash(t) {
+    var i, h = 0xdeadbeef;
+    for (i = 0; i < t.length; i++) {
+        h = ((h << 5) - h) + t.charCodeAt(i);
+        h = h & h;
+    }
+    return (h >>> 0).toString(16);
+}
+
+function znw_add_button(notice) {
+    if (notice.querySelector(".zennotice-warden-toggle")) return;
+    var text = notice.textContent.replace(/\\s+/g, " ").trim();
+    if (!text) return;
+    var id = znw_hash(text);
+    var btn = document.createElement("button");
+    btn.className = "zennotice-warden-toggle";
+    btn.setAttribute("data-id", id);
+    btn.setAttribute("data-text", text.substring(0, 500));
+    btn.title = "' . esc_js(__('Block this notice', 'zennotice-warden')) . '";
+    btn.innerHTML = "&times;";
+    notice.appendChild(btn);
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".notice, .updated, .error, .update-nag, .message").forEach(znw_add_button);
+    var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(n) {
+                if (n.nodeType === 1) {
+                    if (n.matches && n.matches(".notice, .updated, .error, .update-nag, .message")) {
+                        znw_add_button(n);
+                    }
+                    n.querySelectorAll && n.querySelectorAll(".notice, .updated, .error, .update-nag, .message").forEach(znw_add_button);
+                }
+            });
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+});
+
 jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
     e.preventDefault();
     var btn = jQuery(this);
     var id = btn.data("id");
     var txt = btn.data("text") || "";
-    var notice = btn.closest(".notice, .updated, .error, .update-nag");
+    var notice = btn.closest(".notice, .updated, .error, .update-nag, .message");
     jQuery.post(ZenNoticeWardenData.ajax_url, {
         action: ZenNoticeWardenData.action,
         notice_id: id,
@@ -262,7 +306,9 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
         }
     });
 });
-');
+';
+
+        wp_add_inline_script('zennotice-warden', $inline_js);
 
         wp_localize_script('zennotice-warden', 'ZenNoticeWardenData', [
             'ajax_url' => admin_url('admin-ajax.php'),
