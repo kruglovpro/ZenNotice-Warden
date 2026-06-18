@@ -28,8 +28,6 @@ class ZenNoticeWarden {
 
         add_action('init', [$this, 'load_textdomain']);
         add_action('wp_ajax_zennotice_warden_toggle', [$this, 'toggle_notice']);
-        add_action('admin_notices', [$this, 'process_notices_buffer'], -9999);
-        add_action('network_admin_notices', [$this, 'process_notices_buffer'], -9999);
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
@@ -39,107 +37,143 @@ class ZenNoticeWarden {
         load_plugin_textdomain('zennotice-warden', false, dirname(plugin_basename(__FILE__)) . '/languages');
     }
 
-    public function process_notices_buffer() {
-        remove_action(current_filter(), [$this, 'process_notices_buffer'], -9999);
+    public function enqueue_assets() {
+        wp_register_script('zennotice-warden', '', ['jquery'], '1.8.1', true);
+        wp_enqueue_script('zennotice-warden');
 
-        ob_start([$this, 'analyze_and_filter']);
-        do_action(current_filter());
-        echo ob_get_clean();
-    }
-
-    public function analyze_and_filter($buffer) {
-        if (empty($buffer)) {
-            return $buffer;
-        }
-
-        $blocked_ids = $this->get_blocked_ids();
+        $blocked = $this->get_blocked_notices();
+        $blocked_texts = array_map(function($n) { return $n['text']; }, $blocked);
         $regex_filters = $this->get_regex_filters();
-        $output = '';
-        $offset = 0;
-        $pattern = '/<(div|section)([^>]*class\s*=\s*([\'"])[^\'"]*(notice|updated|error|update-nag)[^\'"]*\3[^>]*)>/i';
+        $regex_patterns = array_map(function($f) { return $f['pattern']; }, $regex_filters);
 
-        while (preg_match($pattern, $buffer, $matches, PREG_OFFSET_CAPTURE, $offset)) {
-            $match_start = $matches[0][1];
-            $tag = $matches[1][0];
+        $inline_js = '
+(function() {
+    var BLOCKED = ' . json_encode($blocked_texts) . ';
+    var REGEX = ' . json_encode($regex_patterns) . ';
+    var NOTICE_SEL = ".notice, .updated, .error, .update-nag, .message";
 
-            $output .= substr($buffer, $offset, $match_start - $offset);
-
-            $depth = 1;
-            $open_tag = '<' . $tag;
-            $close_tag = '</' . $tag . '>';
-            $search_start = $match_start + strlen($matches[0][0]);
-            $notice_end = $search_start;
-
-            while ($depth > 0 && $notice_end < strlen($buffer)) {
-                $next_open = strpos($buffer, $open_tag, $search_start);
-                $next_close = strpos($buffer, $close_tag, $search_start);
-
-                if ($next_close === false) {
-                    $notice_end = strlen($buffer);
-                    break;
-                }
-
-                if ($next_open !== false && $next_open < $next_close) {
-                    $depth++;
-                    $search_start = $next_open + strlen($open_tag);
-                } else {
-                    $depth--;
-                    $search_start = $next_close + strlen($close_tag);
-                    if ($depth === 0) {
-                        $notice_end = $next_close + strlen($close_tag);
-                    }
-                }
-            }
-
-            $notice_content = substr($buffer, $match_start, $notice_end - $match_start);
-            $info = $this->get_notice_info($notice_content);
-
-            if (in_array($info['id'], $blocked_ids, true)) {
-                $output .= '';
-            } else {
-                $matched = false;
-                foreach ($regex_filters as $filter) {
-                    if (@preg_match($filter['pattern'], $info['text'])) {
-                        $matched = true;
-                        break;
-                    }
-                }
-
-                if ($matched) {
-                    $output .= '';
-                } else {
-                    $button_title = esc_attr__('Block this notice', 'zennotice-warden');
-                    $button_text = mb_substr($info['text'], 0, 500);
-                    $button = sprintf(
-                        '<button class="zennotice-warden-toggle" data-id="%s" data-text="%s" title="%s" style="float:right; cursor:pointer; background:none; border:none; color:#cc0000; font-size:18px; line-height:1; margin-left:10px;">&times;</button>',
-                        esc_attr($info['id']),
-                        esc_attr($button_text),
-                        $button_title
-                    );
-
-                    $close_tag_pos = strrpos($notice_content, $close_tag);
-                    if ($close_tag_pos !== false) {
-                        $notice_content = substr_replace($notice_content, $button . $close_tag, $close_tag_pos, strlen($close_tag));
-                    }
-
-                    $output .= $notice_content;
-                }
-            }
-
-            $offset = $notice_end;
-        }
-
-        $output .= substr($buffer, $offset);
-        return $output;
+    function getNoticeText(notice) {
+        return notice.textContent.replace(/\s+/g, " ").trim();
     }
 
-    private function get_notice_info($content) {
-        $text = wp_strip_all_tags($content, true);
-        $text = trim(preg_replace('/\s+/', ' ', $text));
-        return [
-            'id' => md5($text),
-            'text' => $text,
-        ];
+    function isBlocked(text) {
+        for (var i = 0; i < BLOCKED.length; i++) {
+            if (BLOCKED[i] === text) return true;
+        }
+        return false;
+    }
+
+    function matchesRegex(text) {
+        for (var i = 0; i < REGEX.length; i++) {
+            try {
+                var re = new RegExp(REGEX[i].slice(1, REGEX[i].lastIndexOf("/")), REGEX[i].slice(REGEX[i].lastIndexOf("/") + 1));
+                if (re.test(text)) return true;
+            } catch(e) {}
+        }
+        return false;
+    }
+
+    function addButton(notice) {
+        if (notice.querySelector(".znw-toggle")) return;
+        var text = getNoticeText(notice);
+        if (!text) return;
+        var btn = document.createElement("button");
+        btn.className = "znw-toggle";
+        btn.setAttribute("data-text", text.substring(0, 500));
+        btn.title = "' . esc_js(__('Block this notice', 'zennotice-warden')) . '";
+        btn.innerHTML = "&times;";
+        btn.style.cssText = "float:right;cursor:pointer;background:none;border:none;color:#cc0000;font-size:18px;line-height:1;margin-left:10px;padding:0;";
+        notice.appendChild(btn);
+    }
+
+    function processNotice(notice) {
+        var text = getNoticeText(notice);
+        if (isBlocked(text) || matchesRegex(text)) {
+            notice.style.display = "none";
+            return;
+        }
+        addButton(notice);
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll(NOTICE_SEL).forEach(processNotice);
+    });
+
+    var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(n) {
+                if (n.nodeType === 1) {
+                    if (n.matches && n.matches(NOTICE_SEL)) processNotice(n);
+                    if (n.querySelectorAll) n.querySelectorAll(NOTICE_SEL).forEach(processNotice);
+                }
+            });
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    jQuery(document).on("click", ".znw-toggle", function(e) {
+        e.preventDefault();
+        var btn = jQuery(this);
+        var txt = btn.data("text") || "";
+        var notice = btn.closest(NOTICE_SEL);
+        jQuery.post(ZenNoticeWardenData.ajax_url, {
+            action: ZenNoticeWardenData.action,
+            notice_text: txt,
+            security: ZenNoticeWardenData.nonce
+        }, function(response) {
+            if (response.success) {
+                notice.fadeOut(function() {
+                    notice.css("display", "none");
+                });
+            }
+        });
+    });
+})();
+';
+
+        wp_add_inline_script('zennotice-warden', $inline_js);
+
+        wp_localize_script('zennotice-warden', 'ZenNoticeWardenData', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce($this->nonce_action),
+            'action'   => 'zennotice_warden_toggle',
+        ]);
+    }
+
+    public function toggle_notice() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(null, 403);
+        }
+
+        check_ajax_referer($this->nonce_action, 'security');
+
+        if (empty($_POST['notice_text'])) {
+            wp_send_json_error(['message' => 'Missing notice text']);
+        }
+
+        $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags(wp_unslash($_POST['notice_text']), true)));
+        if (empty($text)) {
+            wp_send_json_error(['message' => 'Empty notice text']);
+        }
+
+        $blocked = $this->get_blocked_notices();
+        $found = false;
+        foreach ($blocked as $i => $n) {
+            if ($n['text'] === $text) {
+                array_splice($blocked, $i, 1);
+                $found = true;
+                break;
+            }
+        }
+
+        if (!$found) {
+            $blocked[] = [
+                'text' => mb_substr($text, 0, 500),
+            ];
+        }
+
+        update_option($this->option_name, $blocked);
+        wp_send_json_success();
     }
 
     private function normalize_blocked($blocked) {
@@ -147,25 +181,20 @@ class ZenNoticeWarden {
             return [];
         }
 
-        if (isset($blocked[0]) && is_string($blocked[0])) {
-            return array_map(function($id) {
-                return ['id' => $id, 'text' => ''];
-            }, $blocked);
+        $normalized = [];
+        foreach ($blocked as $item) {
+            if (is_string($item)) {
+                $normalized[] = ['text' => $item];
+            } elseif (is_array($item) && isset($item['text'])) {
+                $normalized[] = ['text' => $item['text']];
+            }
         }
-
-        return $blocked;
+        return $normalized;
     }
 
     private function get_blocked_notices() {
         $raw = get_option($this->option_name, []);
         return $this->normalize_blocked($raw);
-    }
-
-    private function get_blocked_ids() {
-        $notices = $this->get_blocked_notices();
-        return array_map(function($n) {
-            return $n['id'];
-        }, $notices);
     }
 
     private function get_regex_filters() {
@@ -209,114 +238,6 @@ class ZenNoticeWarden {
         return [true, ''];
     }
 
-    public function toggle_notice() {
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(null, 403);
-        }
-
-        check_ajax_referer($this->nonce_action, 'security');
-
-        if (empty($_POST['notice_id'])) {
-            wp_send_json_error();
-        }
-
-        $id = sanitize_text_field(wp_unslash($_POST['notice_id']));
-        $text = isset($_POST['notice_text']) ? sanitize_text_field(wp_unslash($_POST['notice_text'])) : '';
-        // Always use PHP-side md5 as canonical ID
-        $canonical_id = md5(trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($text, true))));
-
-        $blocked = $this->get_blocked_notices();
-        $ids = array_map(function($n) { return $n['id']; }, $blocked);
-
-        if (in_array($canonical_id, $ids, true)) {
-            $blocked = array_values(array_filter($blocked, function($n) use ($canonical_id) {
-                return $n['id'] !== $canonical_id;
-            }));
-        } else {
-            $blocked[] = [
-                'id' => $canonical_id,
-                'text' => mb_substr($text, 0, 500),
-            ];
-        }
-
-        update_option($this->option_name, $blocked);
-        wp_send_json_success();
-    }
-
-    public function enqueue_assets() {
-        wp_register_script('zennotice-warden', '', ['jquery'], '1.8.1', true);
-        wp_enqueue_script('zennotice-warden');
-
-        // Simple string hash matching PHP's md5 style (first 8 hex chars)
-        $inline_js = '
-function znw_hash(t) {
-    var i, h = 0xdeadbeef;
-    for (i = 0; i < t.length; i++) {
-        h = ((h << 5) - h) + t.charCodeAt(i);
-        h = h & h;
-    }
-    return (h >>> 0).toString(16);
-}
-
-function znw_add_button(notice) {
-    if (notice.querySelector(".zennotice-warden-toggle")) return;
-    var text = notice.textContent.replace(/\\s+/g, " ").trim();
-    if (!text) return;
-    var id = znw_hash(text);
-    var btn = document.createElement("button");
-    btn.className = "zennotice-warden-toggle";
-    btn.setAttribute("data-id", id);
-    btn.setAttribute("data-text", text.substring(0, 500));
-    btn.title = "' . esc_js(__('Block this notice', 'zennotice-warden')) . '";
-    btn.innerHTML = "&times;";
-    notice.appendChild(btn);
-}
-
-document.addEventListener("DOMContentLoaded", function() {
-    document.querySelectorAll(".notice, .updated, .error, .update-nag, .message").forEach(znw_add_button);
-    var observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-            m.addedNodes.forEach(function(n) {
-                if (n.nodeType === 1) {
-                    if (n.matches && n.matches(".notice, .updated, .error, .update-nag, .message")) {
-                        znw_add_button(n);
-                    }
-                    n.querySelectorAll && n.querySelectorAll(".notice, .updated, .error, .update-nag, .message").forEach(znw_add_button);
-                }
-            });
-        });
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-});
-
-jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
-    e.preventDefault();
-    var btn = jQuery(this);
-    var id = btn.data("id");
-    var txt = btn.data("text") || "";
-    var notice = btn.closest(".notice, .updated, .error, .update-nag, .message");
-    jQuery.post(ZenNoticeWardenData.ajax_url, {
-        action: ZenNoticeWardenData.action,
-        notice_id: id,
-        notice_text: txt,
-        security: ZenNoticeWardenData.nonce
-    }, function(response) {
-        if (response.success) {
-            notice.fadeOut();
-        }
-    });
-});
-';
-
-        wp_add_inline_script('zennotice-warden', $inline_js);
-
-        wp_localize_script('zennotice-warden', 'ZenNoticeWardenData', [
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce($this->nonce_action),
-            'action'   => 'zennotice_warden_toggle',
-        ]);
-    }
-
     public function add_settings_page() {
         add_options_page(
             __('ZenNotice Warden', 'zennotice-warden'),
@@ -345,12 +266,12 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
             }
 
             if (isset($_POST['zennotice_warden_unblock'])) {
-                $id = sanitize_text_field(wp_unslash($_POST['zennotice_warden_unblock']));
-                $blocked = array_values(array_filter($blocked, function($n) use ($id) {
-                    return $n['id'] !== $id;
-                }));
-                update_option($this->option_name, $blocked);
-                echo '<div class="notice notice-success"><p>' . esc_html__('Notice unblocked.', 'zennotice-warden') . '</p></div>';
+                $idx = intval($_POST['zennotice_warden_unblock']);
+                if (isset($blocked[$idx])) {
+                    array_splice($blocked, $idx, 1);
+                    update_option($this->option_name, $blocked);
+                    echo '<div class="notice notice-success"><p>' . esc_html__('Notice unblocked.', 'zennotice-warden') . '</p></div>';
+                }
             }
 
             if (isset($_POST['zennotice_warden_add_regex'])) {
@@ -386,7 +307,7 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
             <h1><?php echo esc_html__('ZenNotice Warden', 'zennotice-warden'); ?></h1>
 
             <h2><?php echo esc_html__('Regex Filters', 'zennotice-warden'); ?></h2>
-            <p><?php echo esc_html__('Notices matching these regular expressions will be automatically blocked.', 'zennotice-warden'); ?></p>
+            <p><?php echo esc_html__('Notices matching these regular expressions will be automatically hidden, even if they appear dynamically.', 'zennotice-warden'); ?></p>
 
             <form method="post" style="margin-bottom: 15px;">
                 <?php wp_nonce_field('zennotice_warden_settings'); ?>
@@ -422,7 +343,7 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
             <?php endif; ?>
 
             <h2><?php echo esc_html__('Blocked Notices', 'zennotice-warden'); ?></h2>
-            <p><?php echo esc_html__('List of manually blocked admin notices.', 'zennotice-warden'); ?></p>
+            <p><?php echo esc_html__('Hidden admin notices. Click × on a notice to block it, then refresh the page to see it here.', 'zennotice-warden'); ?></p>
 
             <?php if (empty($blocked)) : ?>
                 <p><em><?php echo esc_html__('No blocked notices.', 'zennotice-warden'); ?></em></p>
@@ -437,20 +358,18 @@ jQuery(document).on("click", ".zennotice-warden-toggle", function(e) {
                 <table class="wp-list-table widefat fixed striped">
                     <thead>
                         <tr>
-                            <th scope="col" width="280"><?php echo esc_html__('Notice ID', 'zennotice-warden'); ?></th>
-                            <th scope="col"><?php echo esc_html__('Content', 'zennotice-warden'); ?></th>
+                            <th scope="col"><?php echo esc_html__('Notice Text', 'zennotice-warden'); ?></th>
                             <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($blocked as $notice) : ?>
+                        <?php foreach ($blocked as $i => $notice) : ?>
                             <tr>
-                                <td><code><?php echo esc_html($notice['id']); ?></code></td>
                                 <td><?php echo esc_html($notice['text']); ?></td>
                                 <td>
                                     <form method="post" style="display:inline;">
                                         <?php wp_nonce_field('zennotice_warden_settings'); ?>
-                                        <button type="submit" name="zennotice_warden_unblock" value="<?php echo esc_attr($notice['id']); ?>" class="button button-small">
+                                        <button type="submit" name="zennotice_warden_unblock" value="<?php echo $i; ?>" class="button button-small">
                                             <?php echo esc_html__('Unblock', 'zennotice-warden'); ?>
                                         </button>
                                     </form>
