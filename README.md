@@ -1,58 +1,58 @@
 # ZenNotice Warden
 
-ZenNotice Warden — плагин для WordPress, который позволяет индивидуально скрывать или блокировать административные уведомления в панели администратора.
+ZenNotice Warden is a WordPress plugin that allows you to individually hide or block admin notices in the WordPress admin panel.
 
-## Описание
+## Description
 
-Плагин анализирует вывод уведомлений в `admin_notices` и `network_admin_notices` и добавляет кнопку блокировки к каждому уведомлению. После нажатия уведомление исчезает и больше не показывается для текущего сайта.
+The plugin analyzes the output of `admin_notices` and `network_admin_notices` hooks and adds a block button to each notice. Once clicked, the notice disappears and won't be shown again for the current site.
 
-## Возможности
+## Features
 
-- Блокировка отдельных уведомлений администратора
-- Работа с уведомлениями `notice`, `updated`, `error` и `update-nag`
-- Сохранение списка заблокированных уведомлений в опции WordPress
-- Разблокировка уведомлений через страницу настроек (Настройки → ZenNotice Warden)
-- Работа через AJAX с проверкой права `manage_options`
-- Автоматическая очистка данных при деактивации
-- i18n / переводы (через `load_plugin_textdomain`)
+- Block individual admin notices
+- Supports `notice`, `updated`, `error`, and `update-nag` notice types
+- Stores blocked notices in a WordPress option
+- Unblock notices via the settings page (Settings → ZenNotice Warden)
+- AJAX-based blocking with `manage_options` capability check
+- Automatic option cleanup on deactivation
+- i18n support via `load_plugin_textdomain`
 
-## Установка
+## Installation
 
-1. Скопируйте папку `ZenNotice Warden` в директорию `wp-content/plugins/`
-2. Войдите в админ-панель WordPress
-3. Перейдите в меню «Плагины» и активируйте `ZenNotice Warden`
+1. Copy the `ZenNotice Warden` folder to `wp-content/plugins/`
+2. Log into the WordPress admin panel
+3. Go to Plugins and activate `ZenNotice Warden`
 
-## Использование
+## Usage
 
-После активации плагина в админ-панели под каждым системным уведомлением появится кнопка блокировки. Нажмите на неё, чтобы скрыть уведомление и добавить его в список заблокированных.
+After activation, a block button appears on each admin notice. Click it to hide the notice and add it to the blocked list.
 
-Управлять списком заблокированных уведомлений можно на странице **Настройки → ZenNotice Warden**.
+Manage blocked notices on the **Settings → ZenNotice Warden** page.
 
-## История версий
+## Changelog
 
 ### 1.7.0
-- Улучшена генерация ID уведомлений (`wp_strip_all_tags` + нормализация пробелов)
-- Добавлена возможность разблокировки уведомлений (AJAX toggle)
-- Добавлена страница настроек для просмотра и управления списком заблокированных
-- Добавлена очистка опции при деактивации плагина
-- Добавлена загрузка textdomain для переводов
-- Добавлена проверка `is_admin()` в конструктор
-- Исправлен порядок проверок: права доступа проверяются перед nonce
-- Улучшена регистрация скрипта (отдельный handle)
+- Improved notice ID generation (`wp_strip_all_tags` + whitespace normalization)
+- Added unblock support (AJAX toggle)
+- Added settings page to view and manage blocked notices
+- Added option cleanup on plugin deactivation
+- Added textdomain loading for translations
+- Added `is_admin()` check in constructor
+- Fixed permission check order: capabilities checked before nonce
+- Improved script registration (dedicated handle)
 
 ### 1.6.3
-- Первоначальный релиз
+- Initial release
 
-## Требования
+## Requirements
 
-- WordPress 4.0 или выше
-- PHP 5.6 или выше
+- WordPress 4.0+
+- PHP 5.6+
 
-## Лицензия
+## License
 
-GPLv2 или позже
+GPLv2 or later
 
-## Автор
+## Author
 
 Sergey Kruglov
 

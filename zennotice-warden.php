@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: ZenNotice Warden
- * Description: Individually disable, hide, or block admin notices using call-stack analysis.
+ * Description: Individually hide or block admin notices. AJAX-powered with settings page.
  * Version: 1.7.0
  * Author: Sergey Kruglov
  * Author URI: https://kruglov.net
