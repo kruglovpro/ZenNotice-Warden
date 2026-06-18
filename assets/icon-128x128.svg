@@ -1,5 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="16" fill="#1d2327"/>
-  <polygon points="40,96 88,64 40,32" fill="#cc0000"/>
-  <text x="64" y="120" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#999">ZW</text>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1d2327"/>
+      <stop offset="100%" stop-color="#0f1215"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="16" fill="url(#bg)"/>
+  <path d="M64 12 L120 34 L120 68 C120 98 96 120 64 128 C32 120 8 98 8 68 L8 34 Z" fill="#2c3338" stroke="#3c434a" stroke-width="1.5"/>
+  <path d="M64 22 L108 40 L108 68 C108 92 88 110 64 117 C40 110 20 92 20 68 L20 40 Z" fill="#1d2327"/>
+  <polyline points="44,66 58,82 84,50" fill="none" stroke="#00a32a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

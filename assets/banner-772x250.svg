@@ -1,6 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 772 250">
-  <rect width="772" height="250" fill="#1d2327"/>
-  <polygon points="290,180 400,105 510,180" fill="#cc0000" opacity="0.8"/>
-  <text x="400" y="80" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="#fff">ZenNotice Warden</text>
-  <text x="400" y="110" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#bbb">Control WordPress admin notices</text>
+  <defs>
+    <linearGradient id="bgb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1d2327"/>
+      <stop offset="100%" stop-color="#0b0e10"/>
+    </linearGradient>
+  </defs>
+  <rect width="772" height="250" fill="url(#bgb)"/>
+
+  <!-- Shield icon -->
+  <g transform="translate(100, 30) scale(1.4)">
+    <path d="M64 12 L120 34 L120 68 C120 98 96 120 64 128 C32 120 8 98 8 68 L8 34 Z" fill="#2c3338" stroke="#3c434a" stroke-width="1"/>
+    <path d="M64 22 L108 40 L108 68 C108 92 88 110 64 117 C40 110 20 92 20 68 L20 40 Z" fill="#1d2327"/>
+    <polyline points="44,66 58,82 84,50" fill="none" stroke="#00a32a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Title -->
+  <text x="220" y="110" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="bold" fill="#ffffff">ZenNotice Warden</text>
+  <text x="220" y="142" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" fill="#a7aaad">Take control of your WordPress admin notices</text>
+
+  <!-- Features -->
+  <g transform="translate(220, 170)">
+    <rect x="0" y="0" width="160" height="28" rx="14" fill="#2c3338"/>
+    <text x="80" y="19" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="12" fill="#c3c4c7">✦ Click to block</text>
+    <rect x="172" y="0" width="160" height="28" rx="14" fill="#2c3338"/>
+    <text x="252" y="19" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="12" fill="#c3c4c7">✦ Regex auto-hide</text>
+    <rect x="344" y="0" width="160" height="28" rx="14" fill="#2c3338"/>
+    <text x="424" y="19" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="12" fill="#c3c4c7">✦ Full UI control</text>
+  </g>
 </svg>
