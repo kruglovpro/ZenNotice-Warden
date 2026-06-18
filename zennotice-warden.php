@@ -183,18 +183,36 @@ class ZenNoticeWarden {
         return false;
     }
 
-    function addButton(notice, source) {
+    function addButtons(notice, source) {
         if (notice.querySelector(".znw-toggle")) return;
         var text = getNoticeText(notice);
         if (!text) return;
+
+        var wrap = document.createElement("span");
+        wrap.className = "znw-wrap";
+        wrap.style.cssText = "float:right;display:flex;gap:4px;margin-left:10px;flex-shrink:0;";
+
         var btn = document.createElement("button");
-        btn.className = "znw-toggle";
+        btn.className = "znw-toggle znw-toggle-notice";
         btn.setAttribute("data-text", text.substring(0, 500));
         btn.setAttribute("data-source", source || "");
-        btn.title = "' . esc_js(__('Block this notice', 'zennotice-warden')) . '";
-        btn.innerHTML = "&times;";
-        btn.style.cssText = "float:right;cursor:pointer;background:none;border:none;color:#cc0000;font-size:18px;line-height:1;margin-left:10px;padding:0;";
-        notice.appendChild(btn);
+        btn.textContent = "' . esc_js(__('Block notice', 'zennotice-warden')) . '";
+        btn.title = "' . esc_js(__('Hide this notice', 'zennotice-warden')) . '";
+        btn.style.cssText = "cursor:pointer;background:var(--wp-components-color-accent,#2271b1);color:#fff;border:none;border-radius:3px;font-size:11px;line-height:1;padding:3px 6px;white-space:nowrap;";
+        wrap.appendChild(btn);
+
+        if (source) {
+            var pbtn = document.createElement("button");
+            pbtn.className = "znw-toggle znw-toggle-plugin";
+            pbtn.setAttribute("data-text", text.substring(0, 500));
+            pbtn.setAttribute("data-source", source);
+            pbtn.textContent = "' . esc_js(__('Block plugin', 'zennotice-warden')) . '";
+            pbtn.title = "' . esc_js(__('Block all notices from this plugin', 'zennotice-warden')) . '";
+            pbtn.style.cssText = "cursor:pointer;background:#d63638;color:#fff;border:none;border-radius:3px;font-size:11px;line-height:1;padding:3px 6px;white-space:nowrap;";
+            wrap.appendChild(pbtn);
+        }
+
+        notice.appendChild(wrap);
     }
 
     function processNotice(notice) {
@@ -203,7 +221,7 @@ class ZenNoticeWarden {
             notice.style.display = "none";
             return;
         }
-        addButton(notice, detectSource(text));
+        addButtons(notice, detectSource(text));
     }
 
     document.addEventListener("DOMContentLoaded", function() {
@@ -233,10 +251,8 @@ class ZenNoticeWarden {
             notice_text: txt,
             security: ZenNoticeWardenData.nonce
         };
-        if (src) {
-            if (confirm("' . esc_js(__('Also block all notices from this plugin?', 'zennotice-warden')) . '")) {
-                data.block_plugin = 1;
-            }
+        if (btn.hasClass("znw-toggle-plugin") && src) {
+            data.block_plugin = 1;
         }
         jQuery.post(ZenNoticeWardenData.ajax_url, data, function(response) {
             if (response.success) {
@@ -498,7 +514,7 @@ class ZenNoticeWarden {
                     <thead>
                         <tr>
                             <th scope="col"><?php echo esc_html__('Plugin Name', 'zennotice-warden'); ?></th>
-                            <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
+                            <th scope="col" style="min-width:120px;"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -533,7 +549,7 @@ class ZenNoticeWarden {
                         <tr>
                             <th scope="col"><?php echo esc_html__('Pattern', 'zennotice-warden'); ?></th>
                             <th scope="col"><?php echo esc_html__('Description', 'zennotice-warden'); ?></th>
-                            <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
+                            <th scope="col" style="min-width:100px;"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -570,7 +586,7 @@ class ZenNoticeWarden {
                     <thead>
                         <tr>
                             <th scope="col"><?php echo esc_html__('Plugin / Source', 'zennotice-warden'); ?></th>
-                            <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
+                            <th scope="col" style="min-width:120px;"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -580,7 +596,7 @@ class ZenNoticeWarden {
                                     <strong><?php echo esc_html($notice['source'] ?: __('Unknown', 'zennotice-warden')); ?></strong>
                                     <br><small style="color:#666;" title="<?php echo esc_attr($notice['text']); ?>"><?php echo esc_html(mb_substr($notice['text'], 0, 120)) . (mb_strlen($notice['text']) > 120 ? '...' : ''); ?></small>
                                 </td>
-                                <td style="white-space:nowrap;">
+                                <td>
                                     <form method="post" style="display:inline;">
                                         <?php wp_nonce_field('zennotice_warden_settings'); ?>
                                         <button type="submit" name="zennotice_warden_unblock" value="<?php echo $i; ?>" class="button button-small">
