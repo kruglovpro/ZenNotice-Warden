@@ -1,6 +1,6 @@
 === ZenNotice Warden ===
 Contributors: kruglovnet
-Tags: admin notices, hide notices, block notices, remove notices, disable notices, admin cleanup, clean dashboard, hide updates, notice control, WordPress notices, hide yoast notices, suppress notices, admin notice manager, dashboard cleaner
+Tags: admin notices, hide notices, block notices, admin cleanup, notice manager
 Requires at least: 4.0
 Tested up to: 7.0
 Requires PHP: 5.6
