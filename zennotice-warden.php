@@ -168,12 +168,31 @@ class ZenNoticeWarden {
 
         if (!$found) {
             $blocked[] = [
-                'text' => mb_substr($text, 0, 500),
+                'text'   => mb_substr($text, 0, 500),
+                'source' => $this->detect_notice_source($text),
             ];
         }
 
         update_option($this->option_name, $blocked);
         wp_send_json_success();
+    }
+
+    private function detect_notice_source($text) {
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $all_plugins = get_plugins();
+        $best = '';
+        $best_len = 0;
+        foreach ($all_plugins as $data) {
+            $name = trim($data['Name']);
+            if (!$name) continue;
+            if (mb_stripos($text, $name) !== false && mb_strlen($name) > $best_len) {
+                $best = $name;
+                $best_len = mb_strlen($name);
+            }
+        }
+        return $best;
     }
 
     private function normalize_blocked($blocked) {
@@ -184,9 +203,12 @@ class ZenNoticeWarden {
         $normalized = [];
         foreach ($blocked as $item) {
             if (is_string($item)) {
-                $normalized[] = ['text' => $item];
+                $normalized[] = ['text' => $item, 'source' => ''];
             } elseif (is_array($item) && isset($item['text'])) {
-                $normalized[] = ['text' => $item['text']];
+                $normalized[] = [
+                    'text'   => $item['text'],
+                    'source' => isset($item['source']) ? $item['source'] : '',
+                ];
             }
         }
         return $normalized;
@@ -358,14 +380,17 @@ class ZenNoticeWarden {
                 <table class="wp-list-table widefat fixed striped">
                     <thead>
                         <tr>
-                            <th scope="col"><?php echo esc_html__('Notice Text', 'zennotice-warden'); ?></th>
+                            <th scope="col"><?php echo esc_html__('Plugin / Source', 'zennotice-warden'); ?></th>
                             <th scope="col" width="80"><?php echo esc_html__('Actions', 'zennotice-warden'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($blocked as $i => $notice) : ?>
                             <tr>
-                                <td><?php echo esc_html($notice['text']); ?></td>
+                                <td>
+                                    <strong><?php echo esc_html($notice['source'] ?: __('Unknown', 'zennotice-warden')); ?></strong>
+                                    <br><small style="color:#666;" title="<?php echo esc_attr($notice['text']); ?>"><?php echo esc_html(mb_substr($notice['text'], 0, 120)) . (mb_strlen($notice['text']) > 120 ? '...' : ''); ?></small>
+                                </td>
                                 <td>
                                     <form method="post" style="display:inline;">
                                         <?php wp_nonce_field('zennotice_warden_settings'); ?>
